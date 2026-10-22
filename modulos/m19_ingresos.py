@@ -107,7 +107,25 @@ def procesar_fecha_estricta(val):
 # 💥 CIRUGÍA 1A: Formateador blindado a 3 decimales
 def formatear_numero_sap(val):
     try:
-        f_val = float(str(val).replace(",", ""))
+        s = str(val).strip().replace("'", "").replace(" ", "")
+        if s == "" or s.lower() in ("none", "nan", "nat"): return ""
+        
+        neg = s.startswith("-")
+        s = s.lstrip("-")
+        
+        # Lógica inteligente para interpretar puntos y comas
+        if "," in s and "." in s:
+            if s.rfind(",") > s.rfind("."): s = s.replace(".", "").replace(",", ".")
+            else: s = s.replace(",", "")
+        elif "," in s:
+            s = s.replace(",", ".")
+        elif "." in s:
+            if re.fullmatch(r"\d{1,3}(\.\d{3})+", s) and not s.startswith("0."):
+                s = s.replace(".", "")
+                
+        f_val = float(s)
+        if neg: f_val = -f_val
+        
         if f_val.is_integer(): return f"{int(f_val):,}".replace(",", ".")
         val_str = f"{f_val:,.3f}".replace(",", "X").replace(".", ",").replace("X", ".")
         while val_str.endswith("0") and "," in val_str:
@@ -594,7 +612,7 @@ def ejecutar():
                     df_lotes_base = pd.DataFrame([{"CANTIDAD": 0.0, "LOTE": "", "F_FABRICACION": hoy_colombia, "F_VENCIMIENTO": hoy_colombia}])
                     
                     config_lotes = {
-                        "CANTIDAD": st.column_config.NumberColumn("⚖️ Cantidad", min_value=0.0, format="%.3f"),
+                        "CANTIDAD": st.column_config.TextColumn("⚖️ Cantidad", help="Escriba el número tal cual (ej: 1000)"),
                         "LOTE": st.column_config.TextColumn("📦 Lote"),
                         "F_FABRICACION": st.column_config.DateColumn("⚙️ F. Fabricación (F/F)", format="YYYY-MM-DD"),
                         "F_VENCIMIENTO": st.column_config.DateColumn("⏳ F. Vencimiento (F/V)", format="YYYY-MM-DD")
@@ -602,7 +620,7 @@ def ejecutar():
                     
                     lotes_editados = st.data_editor(df_lotes_base, num_rows="dynamic", column_config=config_lotes, hide_index=True, use_container_width=True, key=f"multi_lote_{fk}")
                     
-                    lotes_validos = [row for _, row in lotes_editados.iterrows() if float(row["CANTIDAD"]) > 0 and str(row["LOTE"]).strip() != ""]
+                    lotes_validos = [row for _, row in lotes_editados.iterrows() if a_numero(row["CANTIDAD"]) > 0 and str(row["LOTE"]).strip() != ""]
 
                     st.markdown("<hr style='margin: 15px 0px; border: 1px solid #d4af37;'>", unsafe_allow_html=True)
                     st.markdown("<p style='color: #0d1b2a; font-size: 14px; font-weight: 900; text-transform: uppercase;'>📋 Panel de Copiado Rápido (1-Clic para SAP)</p>", unsafe_allow_html=True)
@@ -674,7 +692,7 @@ def ejecutar():
                             nuevas_filas_bulk = []
                             for row_lote in lotes_validos:
                                 lote_ing_inject = f"'{str(row_lote['LOTE']).strip()}"
-                                cant = row_lote['CANTIDAD']
+                                cant = a_numero(row_lote['CANTIDAD'])
                                 cant_final = -abs(cant) if es_anulacion_sap else abs(cant)
                                 ff = pd.to_datetime(row_lote['F_FABRICACION']).strftime("%d/%m/%Y") if pd.notnull(row_lote['F_FABRICACION']) else hoy_colombia.strftime("%d/%m/%Y")
                                 fv = pd.to_datetime(row_lote['F_VENCIMIENTO']).strftime("%d/%m/%Y") if pd.notnull(row_lote['F_VENCIMIENTO']) else hoy_colombia.strftime("%d/%m/%Y")
